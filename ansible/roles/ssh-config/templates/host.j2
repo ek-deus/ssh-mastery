@@ -1,0 +1,34 @@
+# {{ ansible_managed }}
+# Host: {{ item.alias }}
+# Generated: {{ ansible_date_time.iso8601 }}
+
+Host {{ item.alias }}
+    HostName {{ item.hostname }}
+    User {{ item.user | default(ssh_user) }}
+{% if item.identity_file is defined %}
+    IdentityFile {{ item.identity_file }}
+{% endif %}
+{% if item.port is defined %}
+    Port {{ item.port }}
+{% endif %}
+{% if item.proxy_jump is defined %}
+    ProxyJump {{ item.proxy_jump }}
+{% endif %}
+{% if item.proxy_command is defined %}
+    ProxyCommand {{ item.proxy_command }}
+{% endif %}
+{% if item.local_forwards is defined %}
+{% for forward in item.local_forwards %}
+    LocalForward {{ forward }}
+{% endfor %}
+{% endif %}
+{% if item.remote_forwards is defined %}
+{% for forward in item.remote_forwards %}
+    RemoteForward {{ forward }}
+{% endfor %}
+{% endif %}
+{% if item.extra_options is defined %}
+{% for key, value in item.extra_options.items() %}
+    {{ key }} {{ value }}
+{% endfor %}
+{% endif %}
