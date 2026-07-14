@@ -1,0 +1,23 @@
+# Пример конфигурации для личного Ubuntu VPS
+# Замените значения на свои реальные данные
+
+Host vps-production
+    HostName vps.example.com          # Замените на ваш домен/IP
+    User deploy
+    IdentityFile ~/.ssh/id_ed25519_vps_prod
+    IdentitiesOnly yes
+    Port 22
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+    AddKeysToAgent yes
+    # Опционально: проброс портов для локальной разработки
+    # LocalForward 8080 localhost:8080
+
+Host vps-staging
+    HostName staging.example.com
+    User deploy
+    IdentityFile ~/.ssh/id_ed25519_vps_staging
+    IdentitiesOnly yes
+    Port 22
+    ServerAliveInterval 60
+    AddKeysToAgent yes
