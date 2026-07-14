@@ -1,0 +1,16 @@
+[Unit]
+Description=Run SSH Metrics Collector every minute
+Documentation=https://github.com/ek-deus/ssh-mastery
+
+[Timer]
+# Запускать каждую минуту
+OnCalendar=*:0/1
+# Рандомизация задержки (чтобы не все хосты собирали одновременно)
+RandomizedDelaySec=10
+# Если пропущен запуск, выполнить сразу после загрузки
+Persistent=true
+# Точность (1 секунда)
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target
