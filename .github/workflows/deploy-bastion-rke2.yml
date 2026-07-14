@@ -1,0 +1,69 @@
+name: 🏰 Deploy to RKE2 via Bastion
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'k8s/**'
+      - 'ansible/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Kubernetes via Bastion
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔑 Setup SSH with ProxyJump
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: |
+            ${{ secrets.BASTION_SSH_KEY }}
+            ${{ secrets.RKE2_SSH_KEY }}
+
+      - name: 📝 Create SSH config with ProxyJump
+        run: |
+          mkdir -p ~/.ssh
+          cat > ~/.ssh/config << 'EOF'
+          Host bastion
+              HostName ${{ secrets.BASTION_HOST }}
+              User ${{ secrets.BASTION_USER }}
+              IdentityFile ~/.ssh/id_bastion
+              IdentitiesOnly yes
+              StrictHostKeyChecking yes
+          
+          Host rke2-master
+              HostName ${{ secrets.RKE2_MASTER_IP }}
+              User root
+              IdentityFile ~/.ssh/id_rke2
+              IdentitiesOnly yes
+              ProxyJump bastion
+              StrictHostKeyChecking yes
+          EOF
+          chmod 600 ~/.ssh/config ~/.ssh/id_*
+
+      - name: 🔍 Test connectivity through bastion
+        run: |
+          ssh -o ConnectTimeout=15 rke2-master "kubectl version --client"
+
+      - name: 📦 Deploy to Kubernetes
+        run: |
+          # Копирование манифестов на master-ноду
+          rsync -avz -e ssh k8s/ rke2-master:/tmp/k8s-deploy/
+          
+          # Применение манифестов
+          ssh rke2-master << 'EOF'
+            set -e
+            cd /tmp/k8s-deploy
+            kubectl apply -f . --recursive
+            kubectl rollout status deployment/myapp -n production --timeout=300s
+            echo "✅ Deployment completed"
+          EOF
+
+      - name: 🏥 Verify deployment
+        run: |
+          ssh rke2-master "kubectl get pods -n production -l app=myapp"
