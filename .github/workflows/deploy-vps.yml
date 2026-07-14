@@ -1,0 +1,96 @@
+name: 🚀 Deploy to VPS via SSH
+
+on:
+  push:
+    branches: [main, production]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+  DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+
+jobs:
+  deploy:
+    name: Deploy Application
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔑 Setup SSH Agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: 🛡️ Add host to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "${{ env.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: 🔍 Test SSH connection
+        run: |
+          ssh -o StrictHostKeyChecking=yes \
+              -o ConnectTimeout=10 \
+              ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} \
+              "echo '✅ SSH connection successful'"
+
+      - name: 📦 Build application
+        run: |
+          echo "🔨 Building application..."
+          # Здесь ваша логика сборки
+          # npm ci && npm run build
+          # или docker build ...
+          echo "Build completed"
+
+      - name: 📤 Deploy via rsync
+        run: |
+          rsync -avz --delete \
+                --exclude='.git' \
+                --exclude='node_modules' \
+                --exclude='.env*' \
+                -e "ssh -o StrictHostKeyChecking=yes" \
+                ./ ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:/opt/app/
+
+      - name: 🔄 Restart services
+        run: |
+          ssh ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} << 'EOF'
+            set -e
+            cd /opt/app
+            # Перезапуск systemd сервиса
+            sudo systemctl restart myapp.service
+            # Или docker-compose
+            # docker-compose pull && docker-compose up -d
+            echo "✅ Services restarted"
+          EOF
+
+      - name: 🏥 Health check
+        run: |
+          sleep 5
+          curl -f https://${{ env.DEPLOY_HOST }}/health || exit 1
+          echo "✅ Health check passed"
+
+      - name: 📢 Notify on success
+        if: success()
+        run: |
+          echo "✅ Deployment successful!"
+          # Здесь можно добавить уведомление в Telegram/Slack
+
+      - name: 🚨 Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Deployment failed!"
+          # Здесь можно добавить уведомление об ошибке
