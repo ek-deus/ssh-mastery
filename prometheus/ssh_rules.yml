@@ -1,0 +1,144 @@
+groups:
+  - name: ssh_security
+    interval: 1m
+    rules:
+      # ======================================================================
+      # CRITICAL: Brute-force атака обнаружена
+      # ======================================================================
+      - alert: SSHBruteForceDetected
+        expr: ssh_bruteforce_detected_ips > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "🚨 SSH Brute-force attack detected on {{ $labels.instance }}"
+          description: |
+            IP `{{ $labels.ip }}` made {{ $labels.attempts }} failed SSH attempts.
+            
+            **Instance:** {{ $labels.instance }}
+            **Attacker IP:** {{ $labels.ip }}
+            **Attempts:** {{ $labels.attempts }}
+            
+            **Recommended actions:**
+            1. Check fail2ban status: `sudo fail2ban-client status sshd`
+            2. Block IP: `sudo ufw deny from {{ $labels.ip }}`
+            3. Review logs: `sudo journalctl -u ssh | grep {{ $labels.ip }}`
+          runbook_url: "https://github.com/ek-deus/ssh-mastery/docs/runbooks/brute-force.md"
+      
+      # ======================================================================
+      # WARNING: Много неуспешных попыток (возможная атака)
+      # ======================================================================
+      - alert: SSHHighFailureRate
+        expr: |
+          (
+            sum by (instance) (rate(ssh_auth_attempts_total{status="failure"}[5m]))
+            /
+            sum by (instance) (rate(ssh_auth_attempts_total[5m]))
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "⚠️ High SSH failure rate on {{ $labels.instance }}"
+          description: |
+            More than 50% of SSH authentication attempts are failing.
+            
+            **Instance:** {{ $labels.instance }}
+            **Failure rate:** {{ $value | humanizePercentage }}
+            
+            This may indicate a brute-force attack or misconfigured clients.
+      
+      # ======================================================================
+      # WARNING: Попытки входа под root
+      # ======================================================================
+      - alert: SSHRootLoginAttempts
+        expr: rate(ssh_root_login_attempts_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "🔐 Root login attempts on {{ $labels.instance }}"
+          description: |
+            Someone is trying to login as root via SSH.
+            
+            **Instance:** {{ $labels.instance }}
+            **Rate:** {{ $value | humanize }}/sec
+            
+            **Recommended:** Disable root login in `/etc/ssh/sshd_config`:
+            ```
+            PermitRootLogin no
+            ```
+      
+      # ======================================================================
+      # INFO: Необычно много активных сессий
+      # ======================================================================
+      - alert: SSHUnusualSessionCount
+        expr: ssh_active_sessions_total > 10
+        for: 5m
+        labels:
+          severity: info
+          team: ops
+        annotations:
+          summary: "👥 Unusual number of SSH sessions on {{ $labels.instance }}"
+          description: |
+            {{ $value }} active SSH sessions detected (threshold: 10).
+            
+            **Instance:** {{ $labels.instance }}
+            
+            Verify with: `who` or `ss -tn state established '( dport = :22 )'`
+      
+      # ======================================================================
+      # WARNING: Долгие SSH-сессии (возможно, забытые)
+      # ======================================================================
+      - alert: SSHLongRunningSessions
+        expr: ssh_session_duration_seconds > 86400  # > 24 hours
+        for: 1h
+        labels:
+          severity: info
+          team: ops
+        annotations:
+          summary: "⏰ Long-running SSH sessions on {{ $labels.instance }}"
+          description: |
+            Average SSH session duration is {{ $value | humanizeDuration }}.
+            
+            Consider setting `ClientAliveInterval` and `ClientAliveCountMax` in sshd_config.
+      
+      # ======================================================================
+      # CRITICAL: SSH-метрики не обновляются (коллектор мертв)
+      # ======================================================================
+      - alert: SSHMetricsCollectorDown
+        expr: |
+          (time() - ssh_info) > 300
+        for: 5m
+        labels:
+          severity: critical
+          team: ops
+        annotations:
+          summary: "❌ SSH metrics collector is not updating on {{ $labels.instance }}"
+          description: |
+            SSH metrics have not been updated for more than 5 minutes.
+            
+            **Instance:** {{ $labels.instance }}
+            
+            **Check:**
+            ```bash
+            sudo systemctl status ssh-metrics-collector.timer
+            sudo journalctl -u ssh-metrics-collector -n 50
+            ```
+  
+  # ============================================================================
+  # Recording rules для оптимизации запросов
+  # ============================================================================
+  - name: ssh_recording_rules
+    interval: 1m
+    rules:
+      # Общее количество атак за час
+      - record: ssh:attacks:rate1h
+        expr: sum by (instance) (rate(ssh_auth_failures_total[1h])) * 3600
+      
+      # Топ атакующих IP за день
+      - record: ssh:top_attackers:rate24h
+        expr: topk(10, sum by (ip) (ssh_auth_failures_by_ip))
