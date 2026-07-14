@@ -18,13 +18,57 @@
 ---
 
 ## 📖 Оглавление
+- [🗺️ Архитектура и потоки данных](#️-архитектура-и-потоки-данных)
+- [📂 Структура репозитория](#-структура-репозитория)
 - [🧠 Философия](#-философия)
 - [🏗️ Анатомия идеального блока](#️-анатомия-идеального-блока)
 - [🚀 Реальные сценарии (VPS, HomeLab, GitHub)](#-реальные-сценарии)
-- [⚡ DevOps Superpowers (ProxyJump, Multiplexing)](#-devops-superpowers]
+- [⚡ DevOps Superpowers (ProxyJump, Multiplexing)](#-devops-superpowers)
+- [📊 Мониторинг и алертинг (Prometheus + Grafana)](#-мониторинг-и-алертинг)
+- [🤖 Автоматизация (Ansible + GitHub Actions)](#-автоматизация)
 - [🔒 Железобетонная безопасность](#-железобетонная-безопасность)
 - [🛠️ Отладка и диагностика](#️-отладка-и-диагностика)
+- [📦 Быстрый старт (Deploy)](#-быстрый-старт-deploy)
 
+---
+
+## 🗺️ Архитектура и потоки данных
+
+Визуализация того, как этот репозиторий организует доступ к сложной инфраструктуре:
+
+```mermaid
+graph TD
+    A[👤 DevOps Engineer] -->|ssh vps-bot| B(🌐 Ubuntu VPS)
+    A -->|ssh rke2-node-1| C{🛡️ Bastion Host}
+    C -->|ProxyJump| D[🐳 RKE2 Node 1]
+    C -->|ProxyJump| E[🐳 RKE2 Node 2]
+    
+    B -.->|textfile_collector| F[📊 Prometheus]
+    D -.->|textfile_collector| F
+    F --> G[📈 Grafana Dashboard]
+    F -->|Alerts| H[🔔 Telegram/Slack]
+    
+    I[🤖 GitHub Actions] -->|Ansible Playbook| B
+    I -->|Ansible Playbook| C
+    
+    style A fill:#1a1a1a,stroke:#00ff00,stroke-width:2px,color:#fff
+    style C fill:#2d1b4e,stroke:#9900ff,stroke-width:2px,color:#fff
+    style F fill:#1a1a1a,stroke:#E6522C,stroke-width:2px,color:#fff
+```
+---
+```text
+ssh-mastery/
+├── .github/workflows/       # CI/CD: валидация конфигов и авто-деплой через Ansible
+├── ansible/                 # Ansible роль для массового развертывания SSH-конфигов
+├── config.d/                # Модульные примеры конфигов (VPS, HomeLab, GitHub, Bastion)
+├── docs/                    # Расширенная документация и troubleshooting
+├── grafana/                 # Готовый JSON-дашборд для мониторинга SSH-безопасности
+├── prometheus/              # Alerting rules (brute-force, root login, аномалии)
+├── scripts/                 # Утилиты: генерация ключей, фикс прав, сбор метрик (Bash/Python)
+├── snippets/                # Готовые алиасы и функции для ~/.bashrc или ~/.zshrc
+├── systemd/                 # Timer и Service для автоматического сбора метрик
+└── README.md                # Ты находишься здесь
+```
 ---
 
 ## 🧠 Философия
@@ -121,25 +165,30 @@ mkdir -p ~/.ssh/sockets && chmod 700 ~/.ssh/sockets
 # В самом начале ~/.ssh/config
 Include ~/.ssh/config.d/*
 ```
+---
+## 📊 Мониторинг и алертинг
+Репозиторий включает полноценный стек для отслеживания SSH-активности:
+scripts/ssh-metrics-collector.py: Сбор метрик (успешные/неуспешные входы, топ атакующих IP, brute-force детекция).
+prometheus/ssh_rules.yml: Готовые алерты (например, SSHBruteForceDetected или SSHRootLoginAttempts).
+grafana/ssh-monitoring-dashboard.json: Стильный темный дашборд для визуализации угроз и активных сессий.
 
+## 🤖 Автоматизация
+Ansible: Роль ansible/roles/ssh-config для идемпотентного развертывания конфигов и прав доступа на всех управляемых нодах.
+GitHub Actions:
+ssh-config-validation.yml: Проверка синтаксиса и прав доступа при каждом PR.
+ansible-ssh-deploy.yml: Автоматический деплой обновленных конфигов на серверы при мерже в main.
+
+---
 ## 🔒 Железобетонная безопасность
 OpenSSH крайне чувствителен к правам доступа. Неправильные права = Permissions denied или молчаливое игнорирование конфига.
 Выполните этот чеклист один раз:
 ```bash
-# 1. Права на директорию .ssh (только владелец)
 chmod 700 ~/.ssh
-
-# 2. Права на приватные ключи (СТРОГО чтение для владельца)
-chmod 400 ~/.ssh/id_*
-
-# 3. Права на публичные ключи
-chmod 644 ~/.ssh/*.pub
-
-# 4. Права на файл конфигурации
-chmod 600 ~/.ssh/config
-
-# 5. Права на директорию сокетов (для мультиплексирования)
-chmod 700 ~/.ssh/sockets
+chmod 400 ~/.ssh/id_*          # СТРОГО чтение для владельца
+chmod 644 ~/.ssh/*.pub         # Публичные ключи
+chmod 600 ~/.ssh/config        # Файл конфигурации
+chmod 600 ~/.ssh/config.d/*    # Файлы в директории config.d
+chmod 700 ~/.ssh/sockets       # Директория для мультиплексирования
 ```
 
 ## 🛠️ Отладка и диагностика
@@ -158,16 +207,32 @@ chmod 700 ~/.ssh/sockets
 ```bash
    ssh -F ~/.ssh/config -G dummy-host > /dev/null && echo "✅ Config syntax is valid"
 ```
+---
+
 
 📦 Быстрый старт (Deploy)
 Чтобы развернуть эту конфигурацию на новой машине:
 ```bash
+# 1. Клонируем репозиторий во временную директорию
 git clone https://github.com/ek-deus/ssh-mastery.git ~/.ssh.tmp
-mkdir -p ~/.ssh/config.d
-mv ~/.ssh.tmp/config.d/* ~/.ssh/config.d/
-cat ~/.ssh.tmp/config >> ~/.ssh/config
+
+# 2. Создаем необходимые директории
+mkdir -p ~/.ssh/config.d ~/.ssh/sockets
+
+# 3. Копируем примеры конфигураций хостов
+cp ~/.ssh.tmp/config.d/* ~/.ssh/config.d/
+
+# 4. Добавляем директиву Include в ваш существующий ~/.ssh/config (если её там нет)
+echo -e "\n# Modular SSH configs\nInclude ~/.ssh/config.d/*" >> ~/.ssh/config
+
+# 5. Удаляем временные файлы
 rm -rf ~/.ssh.tmp
-# Не забудьте применить права доступа из раздела "Безопасность"!
+
+# 6. КРИТИЧЕСКИ ВАЖНО: Применяем правильные права доступа
+chmod 700 ~/.ssh ~/.ssh/config.d ~/.ssh/sockets
+chmod 600 ~/.ssh/config
+chmod 600 ~/.ssh/config.d/*
+chmod 400 ~/.ssh/id_* 2>/dev/null || true
 ```
 
 <div align="center">
@@ -187,6 +252,3 @@ rm -rf ~/.ssh.tmp
 5. В главном профиле (`ek-deus/ek-deus`) добавь строку:  
    `🔐 Автор гайда по [мастерству управления SSH и мультиплексированию](https://github.com/ek-deus/ssh-mastery)`
 
-Это мгновенно повысит восприятие твоего профиля с "просто разработчика" до "инженера, который думает о безопасности, масштабируемости и удобстве инфраструктуры". 
-
-Нужно ли адаптировать какие-то конкретные хосты или добавить пример интеграции этого конфига с Ansible (например, роль для развертывания этого конфига на новых нодах)?
