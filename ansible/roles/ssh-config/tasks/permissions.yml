@@ -1,0 +1,72 @@
+---
+# Жесткая установка прав доступа
+
+- name: Set permissions on .ssh directory
+  ansible.builtin.file:
+    path: "{{ ssh_dir }}"
+    mode: "0700"
+    state: directory
+
+- name: Set permissions on config files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    mode: "0600"
+  loop:
+    - "{{ ssh_dir }}/config"
+    - "{{ ssh_dir }}/known_hosts"
+  when: item is exists
+
+- name: Set permissions on config.d files
+  ansible.builtin.find:
+    paths: "{{ ssh_config_dir }}"
+    patterns: "*"
+    file_type: file
+  register: config_files
+  when: ssh_manage_config_d
+
+- name: Apply 0600 to all config.d files
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    mode: "0600"
+  loop: "{{ config_files.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: ssh_manage_config_d
+
+- name: Set permissions on private keys (if any)
+  ansible.builtin.find:
+    paths: "{{ ssh_dir }}"
+    patterns: "id_*"
+    file_type: file
+    excludes: "*.pub"
+  register: private_keys
+
+- name: Apply 0400 to private keys
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    mode: "0400"
+  loop: "{{ private_keys.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+- name: Set permissions on public keys
+  ansible.builtin.find:
+    paths: "{{ ssh_dir }}"
+    patterns: "*.pub"
+    file_type: file
+  register: public_keys
+
+- name: Apply 0644 to public keys
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    mode: "0644"
+  loop: "{{ public_keys.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+- name: Set permissions on sockets directory
+  ansible.builtin.file:
+    path: "{{ ssh_sockets_dir }}"
+    mode: "0700"
+    state: directory
+  when: ssh_global_config.ControlMaster is defined
