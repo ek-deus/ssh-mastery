@@ -1,0 +1,52 @@
+---
+# Дефолтные переменные роли ssh-config
+# Переопределяются в inventory или playbook
+
+ssh_user: "{{ ansible_user }}"
+ssh_group: "{{ ansible_user }}"
+ssh_home: "{{ ansible_env.HOME }}"
+
+# Базовая структура директорий
+ssh_dir: "{{ ssh_home }}/.ssh"
+ssh_config_dir: "{{ ssh_dir }}/config.d"
+ssh_sockets_dir: "{{ ssh_dir }}/sockets"
+
+# Глобальные настройки SSH (применяются ко всем хостам)
+ssh_global_config:
+  ServerAliveInterval: 60
+  ServerAliveCountMax: 3
+  TCPKeepAlive: "yes"
+  ControlMaster: auto
+  ControlPath: "{{ ssh_sockets_dir }}/%r@%h-%p"
+  ControlPersist: 10m
+  HashKnownHosts: "yes"
+  VisualHostKey: "yes"
+
+# Список хостов для конфигурации
+# Пример:
+# ssh_hosts:
+#   - alias: vps-production
+#     hostname: vps.ekdeus.me
+#     user: deploy
+#     identity_file: ~/.ssh/id_ed25519_vps_prod
+#     port: 22
+#     extra_options:
+#       IdentitiesOnly: "yes"
+#       AddKeysToAgent: "yes"
+ssh_hosts: []
+
+# Публичные ключи для authorized_keys
+ssh_authorized_keys: []
+# Пример:
+# ssh_authorized_keys:
+#   - "ssh-ed25519 AAAA... admin@workstation"
+#   - "ssh-ed25519 AAAA... ci-cd@github"
+
+# Управлять ли authorized_keys
+ssh_manage_authorized_keys: false
+
+# Управлять ли глобальным конфигом
+ssh_manage_global_config: true
+
+# Управлять ли config.d директорией
+ssh_manage_config_d: true
