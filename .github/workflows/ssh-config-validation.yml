@@ -1,0 +1,67 @@
+name: 🔐 Validate SSH Configs
+
+on:
+  push:
+    paths:
+      - 'config.d/**'
+      - 'scripts/**'
+  pull_request:
+    paths:
+      - 'config.d/**'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Validate SSH Configuration
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔍 Check file permissions
+        run: |
+          echo "Checking for insecure file permissions..."
+          
+          # Проверить, что нет публичных приватных ключей
+          if find . -name "id_*" ! -name "*.pub" -exec stat -c "%a %n" {} \; | grep -v "^400\|^600"; then
+            echo "❌ Found private keys with insecure permissions!"
+            exit 1
+          fi
+          
+          echo "✅ All private keys have secure permissions"
+
+      - name: 🧪 Validate config syntax
+        run: |
+          # Создать временный конфиг для валидации
+          mkdir -p ~/.ssh
+          cat config.d/* > ~/.ssh/config 2>/dev/null || true
+          chmod 600 ~/.ssh/config
+          
+          # Валидация синтаксиса
+          ssh -F ~/.ssh/config -G localhost > /dev/null
+          echo "✅ SSH config syntax is valid"
+
+      - name: 🛡️ Security scan
+        run: |
+          echo "Scanning for security issues..."
+          
+          # Проверить на запрещенные директивы
+          if grep -r "PasswordAuthentication yes" config.d/ 2>/dev/null; then
+            echo "❌ Found PasswordAuthentication yes!"
+            exit 1
+          fi
+          
+          # Проверить на отсутствие IdentitiesOnly
+          if grep -r "IdentityFile" config.d/ | grep -v "IdentitiesOnly"; then
+            echo "⚠️  Warning: IdentityFile without IdentitiesOnly detected"
+          fi
+          
+          echo "✅ Security scan passed"
+
+      - name: 📋 Generate config summary
+        run: |
+          echo "## SSH Config Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Configured Hosts:" >> $GITHUB_STEP_SUMMARY
+          grep -h "^Host " config.d/* 2>/dev/null | awk '{print "- `" $2 "`"}' >> $GITHUB_STEP_SUMMARY || echo "No hosts found" >> $GITHUB_STEP_SUMMARY
