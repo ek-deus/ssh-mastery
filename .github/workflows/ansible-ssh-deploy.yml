@@ -1,0 +1,80 @@
+name: 🤖 Deploy SSH Configs via Ansible
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ansible/**'
+      - 'config.d/**'
+  workflow_dispatch:
+    inputs:
+      target_hosts:
+        description: 'Target hosts (comma-separated)'
+        required: true
+        default: 'all'
+
+jobs:
+  ansible-deploy:
+    name: Deploy SSH Configuration
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Install Ansible
+        run: |
+          pip install ansible ansible-lint
+          ansible-galaxy collection install ansible.posix
+
+      - name: 🔑 Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.ANSIBLE_SSH_KEY }}
+
+      - name: 📝 Create inventory
+        run: |
+          cat > ansible/inventory.ini << 'EOF'
+          [webservers]
+          ${{ secrets.WEB_SERVER_1 }} ansible_user=${{ secrets.ANSIBLE_USER }}
+          ${{ secrets.WEB_SERVER_2 }} ansible_user=${{ secrets.ANSIBLE_USER }}
+          
+          [dbservers]
+          ${{ secrets.DB_SERVER }} ansible_user=${{ secrets.ANSIBLE_USER }}
+          
+          [all:vars]
+          ansible_ssh_common_args='-o StrictHostKeyChecking=yes'
+          EOF
+
+      - name: 🔍 Lint Ansible playbooks
+        run: |
+          cd ansible
+          ansible-lint playbooks/ roles/
+
+      - name: 🧪 Dry run (check mode)
+        run: |
+          cd ansible
+          ansible-playbook playbooks/deploy-ssh-config.yml \
+            -i inventory.ini \
+            --limit "${{ github.event.inputs.target_hosts || 'all' }}" \
+            --check \
+            --diff
+
+      - name: 🚀 Deploy SSH configs
+        if: github.ref == 'refs/heads/main'
+        run: |
+          cd ansible
+          ansible-playbook playbooks/deploy-ssh-config.yml \
+            -i inventory.ini \
+            --limit "${{ github.event.inputs.target_hosts || 'all' }}" \
+            --diff
+
+      - name: ✅ Verify deployment
+        run: |
+          cd ansible
+          ansible all -i inventory.ini -m command -a "ssh -G localhost"
