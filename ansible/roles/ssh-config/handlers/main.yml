@@ -1,0 +1,11 @@
+---
+- name: Restart ssh agent
+  ansible.builtin.command: ssh-add -D
+  ignore_errors: true
+  changed_when: false
+
+- name: Validate SSH config
+  ansible.builtin.command: ssh -F {{ ssh_dir }}/config -G localhost
+  register: ssh_validate
+  changed_when: false
+  failed_when: ssh_validate.rc != 0
