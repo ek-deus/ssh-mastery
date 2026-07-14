@@ -1,0 +1,36 @@
+[Unit]
+Description=SSH Metrics Collector for Prometheus
+Documentation=https://github.com/ek-deus/ssh-mastery
+After=network.target
+
+[Service]
+Type=oneshot
+# Пользователь, от имени которого запускается (должен иметь доступ к логам)
+User=root
+Group=root
+
+# Переменные окружения
+Environment=SSH_METRICS_DIR=/var/lib/node_exporter/textfile_collector
+Environment=SSH_LOG_SOURCE=journal
+Environment=SSH_LOOKBACK_MINUTES=5
+Environment=SSH_GEOIP_ENABLED=false
+Environment=BRUTE_FORCE_THRESHOLD=10
+
+# Путь к скрипту (выберите bash или python версию)
+ExecStart=/usr/local/bin/ssh-metrics-collector.sh
+# ExecStart=/usr/bin/python3 /usr/local/bin/ssh-metrics-collector.py
+
+# Безопасность
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/node_exporter/textfile_collector /var/lib/ssh-metrics
+PrivateTmp=true
+
+# Таймаут
+TimeoutStartSec=60
+
+# Логирование
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ssh-metrics-collector
