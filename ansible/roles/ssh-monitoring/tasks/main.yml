@@ -1,0 +1,76 @@
+---
+- name: Install required packages
+  ansible.builtin.apt:
+    name:
+      - python3
+      - python3-pip
+      - geoipupdate  # опционально для GeoIP
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Create metrics directory
+  ansible.builtin.file:
+    path: "{{ ssh_monitoring_metrics_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create cache directory
+  ansible.builtin.file:
+    path: /var/lib/ssh-metrics
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Deploy SSH metrics collector script
+  ansible.builtin.template:
+    src: ssh-metrics-collector.sh.j2
+    dest: /usr/local/bin/ssh-metrics-collector.sh
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy systemd service
+  ansible.builtin.template:
+    src: ssh-metrics-collector.service.j2
+    dest: /etc/systemd/system/ssh-metrics-collector.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Deploy systemd timer
+  ansible.builtin.template:
+    src: ssh-metrics-collector.timer.j2
+    dest: /etc/systemd/system/ssh-metrics-collector.timer
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Enable and start timer
+  ansible.builtin.systemd:
+    name: ssh-metrics-collector.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Deploy Prometheus alerting rules
+  ansible.builtin.template:
+    src: ssh_rules.yml.j2
+    dest: /etc/prometheus/rules/ssh_rules.yml
+    owner: prometheus
+    group: prometheus
+    mode: "0644"
+  when: ssh_monitoring_deploy_prometheus_rules
+  notify: Reload Prometheus
+
+- name: Verify node_exporter textfile_collector is enabled
+  ansible.builtin.assert:
+    that:
+      - "'textfile.collect' in node_exporter_enabled_collectors"
+    fail_msg: "node_exporter must have textfile_collector enabled"
+  when: node_exporter_enabled_collectors is defined
+  ignore_errors: true
