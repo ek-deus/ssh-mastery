@@ -1,0 +1,51 @@
+---
+# Развертывание конфигурационных файлов
+
+- name: Deploy global SSH config
+  ansible.builtin.template:
+    src: config.j2
+    dest: "{{ ssh_dir }}/config"
+    owner: "{{ ssh_user }}"
+    group: "{{ ssh_group }}"
+    mode: "0600"
+    backup: true
+  when: ssh_manage_global_config
+
+- name: Deploy individual host configs to config.d/
+  ansible.builtin.template:
+    src: host.j2
+    dest: "{{ ssh_config_dir }}/{{ item.alias }}"
+    owner: "{{ ssh_user }}"
+    group: "{{ ssh_group }}"
+    mode: "0600"
+    backup: true
+  loop: "{{ ssh_hosts }}"
+  loop_control:
+    label: "{{ item.alias }}"
+  when: 
+    - ssh_manage_config_d
+    - ssh_hosts | length > 0
+
+- name: Remove stale configs from config.d/
+  ansible.builtin.find:
+    paths: "{{ ssh_config_dir }}"
+    patterns: "*"
+  register: existing_configs
+  when: ssh_manage_config_d
+
+- name: Build list of expected config files
+  ansible.builtin.set_fact:
+    expected_configs: "{{ ssh_hosts | map(attribute='alias') | list }}"
+  when: ssh_manage_config_d
+
+- name: Remove configs not in inventory
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ existing_configs.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when:
+    - ssh_manage_config_d
+    - (item.path | basename) not in expected_configs
+    - not (item.path | basename).startswith('.')
