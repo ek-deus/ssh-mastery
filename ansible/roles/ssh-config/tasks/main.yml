@@ -1,0 +1,19 @@
+---
+# Главная точка входа роли
+
+- name: Include directory management tasks
+  ansible.builtin.include_tasks: directory.yml
+  tags: [ssh, ssh-directories]
+
+- name: Include configuration tasks
+  ansible.builtin.include_tasks: config.yml
+  tags: [ssh, ssh-config]
+
+- name: Include permissions tasks
+  ansible.builtin.include_tasks: permissions.yml
+  tags: [ssh, ssh-permissions]
+
+- name: Include authorized_keys tasks
+  ansible.builtin.include_tasks: authorized_keys.yml
+  when: ssh_manage_authorized_keys
+  tags: [ssh, ssh-keys]
