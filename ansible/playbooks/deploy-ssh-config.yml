@@ -1,0 +1,27 @@
+---
+- name: Deploy SSH configuration to all managed hosts
+  hosts: all
+  become: false  # SSH config is per-user
+  gather_facts: true
+
+  vars:
+    ssh_manage_authorized_keys: false
+    ssh_hosts:
+      - alias: vps-production
+        hostname: vps.ekdeus.me
+        user: deploy
+        identity_file: ~/.ssh/id_ed25519_vps_prod
+        extra_options:
+          IdentitiesOnly: "yes"
+          AddKeysToAgent: "yes"
+      
+      - alias: rke2-node-1
+        hostname: 10.0.0.11
+        user: root
+        identity_file: ~/.ssh/id_ed25519_internal
+        proxy_jump: bastion
+        extra_options:
+          IdentitiesOnly: "yes"
+
+  roles:
+    - role: ssh-config
